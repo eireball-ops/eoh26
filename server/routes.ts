@@ -1,5 +1,12 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { type Server } from "http";
+import { db } from "./db";
+import {
+  contestants,
+  disciplines,
+  results,
+  coffees,
+} from "@shared/schema";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -50,7 +57,6 @@ export async function registerRoutes(
       }
 
       // Calculate score logic: roll * skillMultiplier
-      // Wait, we need the contestant's multiplier first
       const contestants = await storage.getContestants();
       const contestant = contestants.find(c => c.id === input.contestantId);
       if (!contestant) {
@@ -98,7 +104,7 @@ async function seedDatabase() {
     const sports = [
       { name: "panegg", icon: "Egg" },
       { name: "skiing", icon: "Snowflake" },
-      { name: "hockey", icon: "Trophy" }, // Lucide doesn't have Hockey, using generic
+      { name: "hockey", icon: "Trophy" },
       { name: "curling", icon: "CircleDot" },
       { name: "lumberjacking", icon: "Axe" },
       { name: "snowboarding", icon: "Mountain" },
@@ -111,45 +117,53 @@ async function seedDatabase() {
 
   const existingContestants = await storage.getContestants();
   if (existingContestants.length === 0) {
-    // Parse the file
-    try {
-      const filePath = path.resolve(process.cwd(), "attached_assets/Bez_názdvu_1770908384534.txt");
-      if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath, "utf-8");
+    
+    // Using the new file provided in the latest message
+    const seedFiles = [
+      "attached_assets/Pasted--iameire-50-people-holy-medicine-hat-empire-wyatt-macle_1770920975692.txt",
+      "attached_assets/Bez_názdvu_1770908384534.txt"
+    ];
+
+    let fileToUse = "";
+    for (const f of seedFiles) {
+      if (fs.existsSync(path.resolve(process.cwd(), f))) {
+        fileToUse = f;
+        break;
+      }
+    }
+
+    if (fileToUse) {
+      try {
+        const content = fs.readFileSync(path.resolve(process.cwd(), fileToUse), "utf-8");
         const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         
-        // Simple heuristic: If a line has "x[Number]", it's a person. If not, and it's not a person, it might be a country.
-        // Actually the file format seems to be: Country, Person, Person.
-        // But the spacing is weird.
-        // Let's use the regex for " — x" to identify people.
-        
         let currentCountry = "";
+        const seenContestants = new Set();
         
         for (const line of lines) {
+          // Skip header lines like "@iameire (50 people)"
+          if (line.startsWith("@")) continue;
+
           const personMatch = line.match(/^(.+) — x([\d\.]+)$/);
           if (personMatch) {
             const name = personMatch[1];
             const multiplier = parseFloat(personMatch[2]);
             const multiplierText = `x${multiplier}`;
             
-            if (currentCountry) {
+            if (currentCountry && !seenContestants.has(`${name}-${currentCountry}`)) {
                await storage.createContestant(name, currentCountry, multiplier, multiplierText);
+               seenContestants.add(`${name}-${currentCountry}`);
             }
           } else {
             // Assume it's a country
             currentCountry = line;
           }
         }
-      } else {
-        console.warn("Seed file not found:", filePath);
-        // Fallback seed if file missing
-        await storage.createContestant("Test Athlete", "Testland", 1.5, "x1.5");
+      } catch (e) {
+        console.error("Error seeding contestants:", e);
       }
-    } catch (e) {
-      console.error("Error seeding contestants:", e);
     }
   }
   
-  // Ensure coffee counter exists
   await storage.getCoffeeCount();
 }
