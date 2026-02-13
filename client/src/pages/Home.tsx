@@ -16,26 +16,26 @@ import { motion } from "framer-motion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
+// Schedule map (same as Schedule.tsx)
+const scheduleMap: Record<string, number[]> = {
+  skeleton: [1, 8],
+  curling: [2, 9],
+  snowboarding: [3, 10],
+  skiing: [4, 11],
+  lumberjacking: [5, 12],
+  hockey: [6, 13],
+  panegg: [7, 14],
+};
+const sports = [
+  "panegg", 
+  "skiing", 
+  "hockey", 
+  "curling", 
+  "lumberjacking", 
+  "snowboarding", 
+  "skeleton"
+];
 const menuItems = [
-  // Schedule map (same as Schedule.tsx)
-  const scheduleMap: Record<string, number[]> = {
-    skeleton: [1, 8],
-    curling: [2, 9],
-    snowboarding: [3, 10],
-    skiing: [4, 11],
-    lumberjacking: [5, 12],
-    hockey: [6, 13],
-    panegg: [7, 14],
-  };
-  const sports = [
-    "panegg", 
-    "skiing", 
-    "hockey", 
-    "curling", 
-    "lumberjacking", 
-    "snowboarding", 
-    "skeleton"
-  ];
   { 
     title: "Disciplines", 
     href: "/disciplines", 
@@ -194,5 +194,4 @@ export default function Home() {
 
       <Footer />
     </div>
-  );
 }
