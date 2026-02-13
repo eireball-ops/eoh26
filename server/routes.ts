@@ -20,7 +20,11 @@ export async function registerRoutes(
   }
 
   // === SEED DATA ===
-  await seedDatabase();
+  try {
+    await seedDatabase();
+  } catch (error) {
+    console.warn("Seed skipped:", error);
+  }
 
   // === API ROUTES ===
 
