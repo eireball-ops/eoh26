@@ -15,6 +15,9 @@ import { eq, desc, and } from "drizzle-orm";
 import { authStorage, type IAuthStorage } from "./replit_integrations/auth";
 
 export interface IStorage extends IAuthStorage {
+    // Contestant-Disciplines (many-to-many)
+    addDisciplineToContestant(contestantId: number, disciplineId: number): Promise<void>;
+    getDisciplinesForContestant(contestantId: number): Promise<Discipline[]>;
   // Disciplines
   getDisciplines(): Promise<Discipline[]>;
   createDiscipline(name: string, icon: string): Promise<Discipline>;
@@ -34,6 +37,23 @@ export interface IStorage extends IAuthStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+    // Contestant-Disciplines (many-to-many)
+    async addDisciplineToContestant(contestantId: number, disciplineId: number): Promise<void> {
+      await db.insert(contestantDisciplines).values({ contestantId, disciplineId });
+    }
+
+    async getDisciplinesForContestant(contestantId: number): Promise<Discipline[]> {
+      const rows = await db
+        .select({
+          id: disciplines.id,
+          name: disciplines.name,
+          icon: disciplines.icon,
+        })
+        .from(contestantDisciplines)
+        .innerJoin(disciplines, eq(contestantDisciplines.disciplineId, disciplines.id))
+        .where(eq(contestantDisciplines.contestantId, contestantId));
+      return rows;
+    }
   // Auth methods delegated to authStorage
   getUser = authStorage.getUser.bind(authStorage);
   upsertUser = authStorage.upsertUser.bind(authStorage);

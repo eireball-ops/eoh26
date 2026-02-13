@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
@@ -12,8 +13,29 @@ import {
   ArrowRight
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 const menuItems = [
+  // Schedule map (same as Schedule.tsx)
+  const scheduleMap: Record<string, number[]> = {
+    skeleton: [1, 8],
+    curling: [2, 9],
+    snowboarding: [3, 10],
+    skiing: [4, 11],
+    lumberjacking: [5, 12],
+    hockey: [6, 13],
+    panegg: [7, 14],
+  };
+  const sports = [
+    "panegg", 
+    "skiing", 
+    "hockey", 
+    "curling", 
+    "lumberjacking", 
+    "snowboarding", 
+    "skeleton"
+  ];
   { 
     title: "Disciplines", 
     href: "/disciplines", 
@@ -59,8 +81,61 @@ const menuItems = [
 ];
 
 export default function Home() {
-  return (
+  // Daily popup state
+  const [showPopup, setShowPopup] = useState(false);
+  const [todayEvents, setTodayEvents] = useState<string[]>([]);
+
+  useEffect(() => {
+    // Determine current day (1-based, Feb 16, 2026 = day 1)
+    const startDate = new Date(2026, 1, 16); // Feb is month 1 (0-based)
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    if (diffDays < 1 || diffDays > 14) return; // Out of schedule range
+
+    // Find sports scheduled for today
+    const events = sports.filter(sport => scheduleMap[sport]?.includes(diffDays));
+    setTodayEvents(events);
+
+    // Show popup only once per day
+    const key = `popup_shown_${now.getFullYear()}_${now.getMonth()}_${now.getDate()}`;
+    if (!localStorage.getItem(key) && events.length > 0) {
+      setShowPopup(true);
+      localStorage.setItem(key, "1");
+    }
+  }, []);
     <div className="min-h-screen flex flex-col bg-slate-50">
+      {/* Daily Schedule Popup */}
+      <Dialog open={showPopup} onOpenChange={setShowPopup}>
+        <DialogContent className="max-w-md bg-white rounded-2xl border-none shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-blue-700 text-xl font-bold gap-2">
+              <Calendar className="w-6 h-6" />
+              Today's Events
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 text-center">
+            {todayEvents.length > 0 ? (
+              <>
+                <p className="text-lg font-medium text-slate-900 mb-2">Scheduled for today:</p>
+                <ul className="flex flex-col gap-2 items-center">
+                  {todayEvents.map(ev => (
+                    <li key={ev} className="capitalize text-blue-700 font-semibold text-base bg-blue-50 rounded-full px-4 py-1 border border-blue-100 shadow-sm">
+                      {ev}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="text-slate-500">No events scheduled for today.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowPopup(false)} className="w-full bg-blue-700 hover:bg-blue-800 rounded-xl text-white font-bold">
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Navigation />
       
       <main className="flex-1 container mx-auto px-4 py-12 flex flex-col items-center">

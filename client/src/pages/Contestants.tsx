@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
-import { useContestants } from "@/hooks/use-contestants";
+import { useContestants, ContestantWithDisciplines } from "@/hooks/use-contestants";
+import { useAuth } from "@/hooks/use-auth";
+import { useAdminEditContestant, useAdminDeleteContestant } from "@/hooks/use-admin-contestants";
 import { Input } from "@/components/ui/input";
 import { 
   Select, 
@@ -16,12 +18,17 @@ import { motion } from "framer-motion";
 
 type SortOption = "name" | "country";
 
-export default function Contestants() {
   const { data: contestants, isLoading, error } = useContestants();
+  const { user } = useAuth();
+  const isAdmin = user?.email === "@admin";
+  const editContestant = useAdminEditContestant();
+  const deleteContestant = useAdminDeleteContestant();
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editFields, setEditFields] = useState({ name: "", country: "", skillMultiplier: "", multiplierText: "" });
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("name");
 
-  const filtered = contestants?.filter(c => 
+  const filtered: ContestantWithDisciplines[] = contestants?.filter(c => 
     c.name.toLowerCase().includes(search.toLowerCase()) || 
     c.country.toLowerCase().includes(search.toLowerCase())
   ).sort((a, b) => {
@@ -91,15 +98,93 @@ export default function Contestants() {
                           {contestant.multiplierText}
                         </div>
                       </div>
-                      
-                      <h3 className="text-lg font-bold text-slate-900 mb-1 group-hover:text-blue-700 transition-colors">
-                        {contestant.name}
-                      </h3>
-                      
-                      <div className="flex items-center text-slate-500 text-sm">
-                        <Flag className="w-4 h-4 mr-2" />
-                        {contestant.country}
-                      </div>
+                      {isAdmin && editId === contestant.id ? (
+                        <div className="flex flex-col gap-2 mb-2">
+                          <input
+                            className="border rounded px-2 py-1 mb-1"
+                            value={editFields.name}
+                            onChange={e => setEditFields(f => ({ ...f, name: e.target.value }))}
+                            placeholder="Name"
+                          />
+                          <input
+                            className="border rounded px-2 py-1 mb-1"
+                            value={editFields.country}
+                            onChange={e => setEditFields(f => ({ ...f, country: e.target.value }))}
+                            placeholder="Country"
+                          />
+                          <input
+                            className="border rounded px-2 py-1 mb-1"
+                            value={editFields.skillMultiplier}
+                            onChange={e => setEditFields(f => ({ ...f, skillMultiplier: e.target.value }))}
+                            placeholder="Skill Multiplier"
+                            type="number"
+                          />
+                          <input
+                            className="border rounded px-2 py-1 mb-1"
+                            value={editFields.multiplierText}
+                            onChange={e => setEditFields(f => ({ ...f, multiplierText: e.target.value }))}
+                            placeholder="Multiplier Text"
+                          />
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              className="text-green-700 font-bold px-2"
+                              onClick={() => {
+                                editContestant.mutate({
+                                  id: contestant.id,
+                                  name: editFields.name,
+                                  country: editFields.country,
+                                  skillMultiplier: parseFloat(editFields.skillMultiplier),
+                                  multiplierText: editFields.multiplierText,
+                                });
+                                setEditId(null);
+                              }}
+                            >Save</button>
+                            <button
+                              className="text-slate-400 px-2"
+                              onClick={() => setEditId(null)}
+                            >Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <h3 className="text-lg font-bold text-slate-900 mb-1 group-hover:text-blue-700 transition-colors">
+                            {contestant.name}
+                          </h3>
+                          <div className="flex items-center text-slate-500 text-sm mb-1">
+                            <Flag className="w-4 h-4 mr-2" />
+                            {contestant.country}
+                          </div>
+                          {contestant.disciplines && contestant.disciplines.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {contestant.disciplines.map((d) => (
+                                <span key={d.id} className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100">
+                                  <span className="mr-1">{d.icon}</span>{d.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {isAdmin && (
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                className="text-blue-700 font-bold text-xs underline"
+                                onClick={() => {
+                                  setEditId(contestant.id);
+                                  setEditFields({
+                                    name: contestant.name,
+                                    country: contestant.country,
+                                    skillMultiplier: contestant.skillMultiplier.toString(),
+                                    multiplierText: contestant.multiplierText,
+                                  });
+                                }}
+                              >Edit</button>
+                              <button
+                                className="text-red-700 font-bold text-xs underline"
+                                onClick={() => deleteContestant.mutate(contestant.id)}
+                              >Delete</button>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </Card>
                 </motion.div>

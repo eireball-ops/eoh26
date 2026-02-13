@@ -3,6 +3,8 @@ import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { useDisciplines } from "@/hooks/use-disciplines";
 import { useResults } from "@/hooks/use-results";
+import { useAuth } from "@/hooks/use-auth";
+import { useAdminEditResult, useAdminDeleteResult } from "@/hooks/use-admin-results";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -86,6 +88,12 @@ function ResultsDialog({
   disciplineName?: string;
 }) {
   const { data: results, isLoading } = useResults(disciplineId || undefined);
+  const { user } = useAuth();
+  const isAdmin = user?.email === "@admin";
+  const editResult = useAdminEditResult();
+  const deleteResult = useAdminDeleteResult();
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editScore, setEditScore] = useState<string>("");
 
   // Filter is redundant if backend filters, but good for safety
   const sortedResults = results
@@ -131,9 +139,45 @@ function ResultsDialog({
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-display font-bold text-slate-900">{result.score.toFixed(1)}</div>
-                    <div className="text-xs text-slate-400">Points</div>
+                  <div className="text-right flex flex-col items-end gap-1 min-w-[100px]">
+                    {isAdmin && editId === result.id ? (
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="number"
+                          value={editScore}
+                          onChange={e => setEditScore(e.target.value)}
+                          className="border rounded px-2 py-1 w-20 text-right"
+                        />
+                        <button
+                          className="text-green-700 font-bold px-2"
+                          onClick={() => {
+                            editResult.mutate({ id: result.id, score: parseFloat(editScore) });
+                            setEditId(null);
+                          }}
+                        >Save</button>
+                        <button
+                          className="text-slate-400 px-2"
+                          onClick={() => setEditId(null)}
+                        >Cancel</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-2xl font-display font-bold text-slate-900">{result.score.toFixed(1)}</div>
+                        <div className="text-xs text-slate-400">Points</div>
+                        {isAdmin && (
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              className="text-blue-700 font-bold text-xs underline"
+                              onClick={() => { setEditId(result.id); setEditScore(result.score.toString()); }}
+                            >Edit</button>
+                            <button
+                              className="text-red-700 font-bold text-xs underline"
+                              onClick={() => deleteResult.mutate(result.id)}
+                            >Delete</button>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

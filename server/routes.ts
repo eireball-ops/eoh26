@@ -14,7 +14,94 @@ import fs from "fs";
 import path from "path";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 
+// Hardcoded user-country mapping and admin
+const USER_COUNTRY_MAP: Record<string, string[]> = {
+  "@iameire": [
+    "holy medicine hat empire", "dishwasher washer high", "hatin federative monarchy", "syldavia", "norway-sweden", "sc'ish", "éire", "444", "goral republic", "gurmany", "federative republic of the french revolutionaries", "greater iberia", "potat", "orban", "cornhub", "baklan", "calabria", "qassay", "skaterzz gang", "sybau"
+  ],
+  "@arabemir": [
+    "usachina", "oe", "carterr empire", "icelandian commonwealth", "b'ish", "coconut kingdom", "ofban", "upni", "Andorra", "kosovo", "turkce", "finland", "haliar", "bavaria", "bois", "karpentar", "Darwin"
+  ],
+  "@yassauron": [
+    "slapell coan", "gvm drop", "smile kingdom", "qulaq"
+  ],
+  "@j": [], // Assign as needed
+  "@admin": [] // Admin can do anything
+};
+
+const ALLOWED_USERS = ["@iameire", "@arabemir", "@yassauron", "@j", "@admin"];
+
 export async function registerRoutes(
+    // === ADMIN API ROUTES ===
+    // Update result (admin only)
+    app.put('/api/admin/results/:id', async (req, res) => {
+      const user = req.user?.claims;
+      const username = user?.preferred_username || user?.email || user?.sub;
+      if (username !== "@admin") return res.status(403).json({ message: "Not allowed" });
+      const id = parseInt(req.params.id);
+      const { score } = req.body;
+      if (typeof score !== 'number') return res.status(400).json({ message: "Invalid score" });
+      const [updated] = await db.update(results).set({ score }).where(db.sql`${results.id} = ${id}`).returning();
+      if (!updated) return res.status(404).json({ message: "Result not found" });
+      res.json(updated);
+    });
+
+    // Delete result (admin only)
+    app.delete('/api/admin/results/:id', async (req, res) => {
+      const user = req.user?.claims;
+      const username = user?.preferred_username || user?.email || user?.sub;
+      if (username !== "@admin") return res.status(403).json({ message: "Not allowed" });
+      const id = parseInt(req.params.id);
+      const [deleted] = await db.delete(results).where(db.sql`${results.id} = ${id}`).returning();
+      if (!deleted) return res.status(404).json({ message: "Result not found" });
+      res.json({ success: true });
+    });
+
+    // Update contestant (admin only)
+    app.put('/api/admin/contestants/:id', async (req, res) => {
+      const user = req.user?.claims;
+      const username = user?.preferred_username || user?.email || user?.sub;
+      if (username !== "@admin") return res.status(403).json({ message: "Not allowed" });
+      const id = parseInt(req.params.id);
+      const { name, country, skillMultiplier, multiplierText } = req.body;
+      const [updated] = await db.update(contestants).set({ name, country, skillMultiplier, multiplierText }).where(db.sql`${contestants.id} = ${id}`).returning();
+      if (!updated) return res.status(404).json({ message: "Contestant not found" });
+      res.json(updated);
+    });
+
+    // Delete contestant (admin only)
+    app.delete('/api/admin/contestants/:id', async (req, res) => {
+      const user = req.user?.claims;
+      const username = user?.preferred_username || user?.email || user?.sub;
+      if (username !== "@admin") return res.status(403).json({ message: "Not allowed" });
+      const id = parseInt(req.params.id);
+      const [deleted] = await db.delete(contestants).where(db.sql`${contestants.id} = ${id}`).returning();
+      if (!deleted) return res.status(404).json({ message: "Contestant not found" });
+      res.json({ success: true });
+    });
+
+    // Update discipline (admin only)
+    app.put('/api/admin/disciplines/:id', async (req, res) => {
+      const user = req.user?.claims;
+      const username = user?.preferred_username || user?.email || user?.sub;
+      if (username !== "@admin") return res.status(403).json({ message: "Not allowed" });
+      const id = parseInt(req.params.id);
+      const { name, icon } = req.body;
+      const [updated] = await db.update(disciplines).set({ name, icon }).where(db.sql`${disciplines.id} = ${id}`).returning();
+      if (!updated) return res.status(404).json({ message: "Discipline not found" });
+      res.json(updated);
+    });
+
+    // Delete discipline (admin only)
+    app.delete('/api/admin/disciplines/:id', async (req, res) => {
+      const user = req.user?.claims;
+      const username = user?.preferred_username || user?.email || user?.sub;
+      if (username !== "@admin") return res.status(403).json({ message: "Not allowed" });
+      const id = parseInt(req.params.id);
+      const [deleted] = await db.delete(disciplines).where(db.sql`${disciplines.id} = ${id}`).returning();
+      if (!deleted) return res.status(404).json({ message: "Discipline not found" });
+      res.json({ success: true });
+    });
   httpServer: Server,
   app: Express
 ): Promise<Server> {
@@ -36,7 +123,14 @@ export async function registerRoutes(
   // Contestants
   app.get(api.contestants.list.path, async (req, res) => {
     const contestants = await storage.getContestants();
-    res.json(contestants);
+    // For each contestant, fetch their disciplines
+    const withDisciplines = await Promise.all(
+      contestants.map(async (c) => {
+        const disciplines = await storage.getDisciplinesForContestant(c.id);
+        return { ...c, disciplines };
+      })
+    );
+    res.json(withDisciplines);
   });
 
   // Results
@@ -48,6 +142,13 @@ export async function registerRoutes(
 
   app.post(api.results.create.path, async (req, res) => {
     try {
+      // Get user info from session (OIDC claims)
+      const user = req.user?.claims;
+      const username = user?.preferred_username || user?.email || user?.sub;
+      if (!username || !ALLOWED_USERS.includes(username)) {
+        return res.status(403).json({ message: "Not allowed" });
+      }
+
       const input = api.results.create.input.parse(req.body);
 
       // Check for existing result
@@ -61,6 +162,14 @@ export async function registerRoutes(
       const contestant = contestants.find(c => c.id === input.contestantId);
       if (!contestant) {
         return res.status(400).json({ message: "Contestant not found" });
+      }
+
+      // Restrict by country unless admin
+      if (username !== "@admin") {
+        const allowedCountries = USER_COUNTRY_MAP[username] || [];
+        if (!allowedCountries.includes(contestant.country)) {
+          return res.status(403).json({ message: "You cannot roll for this country." });
+        }
       }
 
       const score = input.roll * contestant.skillMultiplier;
@@ -140,6 +249,10 @@ async function seedDatabase() {
         let currentCountry = "";
         const seenContestants = new Set();
         
+        // Get all discipline IDs
+        const allDisciplines = await storage.getDisciplines();
+        const disciplineIds = allDisciplines.map(d => d.id);
+
         for (const line of lines) {
           // Skip header lines like "@iameire (50 people)"
           if (line.startsWith("@")) continue;
@@ -149,10 +262,22 @@ async function seedDatabase() {
             const name = personMatch[1];
             const multiplier = parseFloat(personMatch[2]);
             const multiplierText = `x${multiplier}`;
-            
+
             if (currentCountry && !seenContestants.has(`${name}-${currentCountry}`)) {
-               await storage.createContestant(name, currentCountry, multiplier, multiplierText);
-               seenContestants.add(`${name}-${currentCountry}`);
+              // Create contestant
+              const contestant = await storage.createContestant(name, currentCountry, multiplier, multiplierText);
+              seenContestants.add(`${name}-${currentCountry}`);
+
+              // Assign 1-3 random disciplines (mostly 1)
+              let numDisciplines = Math.random() < 0.7 ? 1 : (Math.random() < 0.5 ? 2 : 3);
+              // Ensure we don't assign more disciplines than exist
+              numDisciplines = Math.min(numDisciplines, disciplineIds.length);
+              // Shuffle and pick
+              const shuffled = [...disciplineIds].sort(() => Math.random() - 0.5);
+              const assigned = shuffled.slice(0, numDisciplines);
+              for (const disciplineId of assigned) {
+                await storage.addDisciplineToContestant(contestant.id, disciplineId);
+              }
             }
           } else {
             // Assume it's a country

@@ -50,7 +50,15 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
+// Only allow specific users
+const ALLOWED_USERS = ["@iameire", "@arabemir", "@yassauron", "@j", "@admin"];
 async function upsertUser(claims: any) {
+  // Use preferred_username, email, or sub as username
+  const username = claims["preferred_username"] || claims["email"] || claims["sub"];
+  if (!ALLOWED_USERS.includes(username)) {
+    // Not allowed, do not upsert
+    throw new Error("User not allowed");
+  }
   await authStorage.upsertUser({
     id: claims["sub"],
     email: claims["email"],
@@ -73,8 +81,13 @@ export async function setupAuth(app: Express) {
     verified: passport.AuthenticateCallback
   ) => {
     const user = {};
+    try {
+      await upsertUser(tokens.claims());
+    } catch (e) {
+      // Not allowed
+      return verified(new Error("User not allowed"));
+    }
     updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
     verified(null, user);
   };
 

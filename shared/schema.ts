@@ -21,6 +21,12 @@ export const contestants = pgTable("contestants", {
   multiplierText: text("multiplier_text").notNull(), // e.g. "x2.4"
 });
 
+// Join table: Contestant <-> Discipline (many-to-many)
+export const contestantDisciplines = pgTable("contestant_disciplines", {
+  contestantId: integer("contestant_id").notNull().references(() => contestants.id),
+  disciplineId: integer("discipline_id").notNull().references(() => disciplines.id),
+});
+
 export const results = pgTable("results", {
   id: serial("id").primaryKey(),
   contestantId: integer("contestant_id").notNull(),
@@ -46,19 +52,33 @@ export const resultsRelations = relations(results, ({ one }) => ({
   }),
 }));
 
+export const contestantDisciplinesRelations = relations(contestantDisciplines, ({ one }) => ({
+  contestant: one(contestants, {
+    fields: [contestantDisciplines.contestantId],
+    references: [contestants.id],
+  }),
+  discipline: one(disciplines, {
+    fields: [contestantDisciplines.disciplineId],
+    references: [disciplines.id],
+  }),
+}));
+
 // === SCHEMAS ===
 export const insertDisciplineSchema = createInsertSchema(disciplines).omit({ id: true });
 export const insertContestantSchema = createInsertSchema(contestants).omit({ id: true });
 export const insertResultSchema = createInsertSchema(results).omit({ id: true, rolledAt: true });
 export const insertCoffeeSchema = createInsertSchema(coffees).omit({ id: true });
+export const insertContestantDisciplineSchema = createInsertSchema(contestantDisciplines);
 
 // === TYPES ===
 export type Discipline = typeof disciplines.$inferSelect;
 export type Contestant = typeof contestants.$inferSelect;
 export type Result = typeof results.$inferSelect;
 export type Coffee = typeof coffees.$inferSelect;
+export type ContestantDiscipline = typeof contestantDisciplines.$inferSelect;
 
 export type InsertResult = z.infer<typeof insertResultSchema>;
+export type InsertContestantDiscipline = z.infer<typeof insertContestantDisciplineSchema>;
 
 // Request types
 export type CreateResultRequest = {

@@ -2,14 +2,21 @@ import { useState } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { useDisciplines } from "@/hooks/use-disciplines";
+import { useAuth } from "@/hooks/use-auth";
+import { useAdminEditDiscipline, useAdminDeleteDiscipline } from "@/hooks/use-admin-disciplines";
 import { Input } from "@/components/ui/input";
 import { Search, Snowflake } from "lucide-react";
 import * as Icons from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 
-export default function Disciplines() {
   const { data: disciplines, isLoading, error } = useDisciplines();
+  const { user } = useAuth();
+  const isAdmin = user?.email === "@admin";
+  const editDiscipline = useAdminEditDiscipline();
+  const deleteDiscipline = useAdminDeleteDiscipline();
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editFields, setEditFields] = useState({ name: "", icon: "" });
   const [search, setSearch] = useState("");
 
   const filtered = disciplines?.filter(d => 
@@ -58,7 +65,6 @@ export default function Disciplines() {
               {filtered.map((discipline, idx) => {
                 // Dynamically resolve icon from string name
                 const IconComponent = (Icons as any)[discipline.icon] || Snowflake;
-                
                 return (
                   <motion.div
                     key={discipline.id}
@@ -69,14 +75,66 @@ export default function Disciplines() {
                     <Card className="h-full border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 group overflow-hidden">
                       <CardContent className="p-8 flex flex-col items-center justify-center text-center h-full relative z-10">
                         <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-0" />
-                        
                         <div className="w-20 h-20 rounded-2xl bg-slate-50 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center mb-6 transition-colors duration-300 shadow-inner group-hover:shadow-lg z-10">
                           <IconComponent className="w-10 h-10" />
                         </div>
-                        
-                        <h3 className="text-xl font-bold font-display text-slate-900 group-hover:text-blue-700 transition-colors z-10 capitalize">
-                          {discipline.name}
-                        </h3>
+                        {isAdmin && editId === discipline.id ? (
+                          <div className="flex flex-col gap-2 mb-2 w-full">
+                            <input
+                              className="border rounded px-2 py-1 mb-1"
+                              value={editFields.name}
+                              onChange={e => setEditFields(f => ({ ...f, name: e.target.value }))}
+                              placeholder="Name"
+                            />
+                            <input
+                              className="border rounded px-2 py-1 mb-1"
+                              value={editFields.icon}
+                              onChange={e => setEditFields(f => ({ ...f, icon: e.target.value }))}
+                              placeholder="Icon (e.g. Snowflake)"
+                            />
+                            <div className="flex gap-2 mt-1 justify-center">
+                              <button
+                                className="text-green-700 font-bold px-2"
+                                onClick={() => {
+                                  editDiscipline.mutate({
+                                    id: discipline.id,
+                                    name: editFields.name,
+                                    icon: editFields.icon,
+                                  });
+                                  setEditId(null);
+                                }}
+                              >Save</button>
+                              <button
+                                className="text-slate-400 px-2"
+                                onClick={() => setEditId(null)}
+                              >Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <h3 className="text-xl font-bold font-display text-slate-900 group-hover:text-blue-700 transition-colors z-10 capitalize">
+                              {discipline.name}
+                            </h3>
+                            {isAdmin && (
+                              <div className="flex gap-2 mt-2 justify-center">
+                                <button
+                                  className="text-blue-700 font-bold text-xs underline"
+                                  onClick={() => {
+                                    setEditId(discipline.id);
+                                    setEditFields({
+                                      name: discipline.name,
+                                      icon: discipline.icon,
+                                    });
+                                  }}
+                                >Edit</button>
+                                <button
+                                  className="text-red-700 font-bold text-xs underline"
+                                  onClick={() => deleteDiscipline.mutate(discipline.id)}
+                                >Delete</button>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </CardContent>
                     </Card>
                   </motion.div>

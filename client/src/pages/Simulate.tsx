@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
-import { useContestants } from "@/hooks/use-contestants";
+import { useContestants, ContestantWithDisciplines } from "@/hooks/use-contestants";
+import { useAuth } from "@/hooks/use-auth";
 import { useDisciplines } from "@/hooks/use-disciplines";
 import { useCreateResult } from "@/hooks/use-results";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
@@ -27,6 +29,7 @@ import {
 
 export default function Simulate() {
   const { data: contestants } = useContestants();
+  const { user } = useAuth();
   const { data: disciplines } = useDisciplines();
   const { mutate: submitResult, isPending } = useCreateResult();
   const { toast } = useToast();
@@ -40,9 +43,43 @@ export default function Simulate() {
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [conflictMessage, setConflictMessage] = useState("");
 
-  const selectedContestant = contestants?.find(
+  // User-country mapping (must match backend)
+  const USER_COUNTRY_MAP: Record<string, string[]> = {
+    "@iameire": [
+      "holy medicine hat empire", "dishwasher washer high", "hatin federative monarchy", "syldavia", "norway-sweden", "sc'ish", "éire", "444", "goral republic", "gurmany", "federative republic of the french revolutionaries", "greater iberia", "potat", "orban", "cornhub", "baklan", "calabria", "qassay", "skaterzz gang", "sybau"
+    ],
+    "@arabemir": [
+      "usachina", "oe", "carterr empire", "icelandian commonwealth", "b'ish", "coconut kingdom", "ofban", "upni", "Andorra", "kosovo", "turkce", "finland", "haliar", "bavaria", "bois", "karpentar", "Darwin"
+    ],
+    "@yassauron": [
+      "slapell coan", "gvm drop", "smile kingdom", "qulaq"
+    ],
+    "@j": [],
+    "@admin": []
+  };
+
+  // Determine allowed countries for this user
+  let allowedCountries: string[] = [];
+  if (user) {
+    const username = user.email || user.firstName || user.lastName || user.id;
+    if (username === "@admin") {
+      allowedCountries = [];
+    } else if (USER_COUNTRY_MAP[username]) {
+      allowedCountries = USER_COUNTRY_MAP[username];
+    }
+  }
+
+  // Filter contestants for this user (admin sees all)
+  const filteredContestants: ContestantWithDisciplines[] = (!user || user.email === "@admin")
+    ? (contestants || [])
+    : (contestants?.filter(c => allowedCountries.includes(c.country)) || []);
+
+  const selectedContestant = filteredContestants?.find(
     (c) => c.id.toString() === selectedContestantId
   );
+
+  // Only show disciplines assigned to the selected athlete
+  const availableDisciplines = selectedContestant?.disciplines || disciplines;
 
   const handleRoll = () => {
     if (!selectedContestantId || !selectedDisciplineId) {
@@ -137,12 +174,13 @@ export default function Simulate() {
                 <Select
                   value={selectedDisciplineId}
                   onValueChange={setSelectedDisciplineId}
+                  disabled={!selectedContestant}
                 >
                   <SelectTrigger className="h-14 rounded-xl border-slate-200 bg-slate-50 focus:ring-blue-500/20 text-lg">
                     <SelectValue placeholder="Pick a discipline" />
                   </SelectTrigger>
                   <SelectContent>
-                    {disciplines?.map((d) => (
+                    {availableDisciplines?.map((d) => (
                       <SelectItem key={d.id} value={d.id.toString()}>
                         {d.name}
                       </SelectItem>
@@ -175,24 +213,24 @@ export default function Simulate() {
                 </Button>
               </div>
 
-              {/* Right Column: Athlete Selection */}
+              {/* Right Column: Athlete Selection as Tiles */}
               <div className="w-full md:w-1/3 space-y-2">
-                <label className="text-sm font-semibold text-slate-700 ml-1">Athlete</label>
-                <Select
-                  value={selectedContestantId}
-                  onValueChange={setSelectedContestantId}
-                >
-                  <SelectTrigger className="h-14 rounded-xl border-slate-200 bg-slate-50 focus:ring-blue-500/20 text-lg">
-                    <SelectValue placeholder="Pick an athlete" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {contestants?.map((c) => (
-                      <SelectItem key={c.id} value={c.id.toString()}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <label className="text-sm font-semibold text-slate-700 ml-1 mb-2 block">Athlete</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {filteredContestants?.map((c) => (
+                    <Card
+                      key={c.id}
+                      className={`cursor-pointer border-2 transition-all duration-200 ${selectedContestantId === c.id.toString() ? 'border-blue-600 shadow-lg' : 'border-slate-200 hover:border-blue-400'}`}
+                      onClick={() => setSelectedContestantId(c.id.toString())}
+                    >
+                      <div className="p-4 flex flex-col items-center">
+                        <div className="font-bold text-lg text-slate-900 mb-1">{c.name}</div>
+                        <div className="text-xs text-slate-500 mb-1">{c.country}</div>
+                        <div className="text-sm font-semibold text-blue-600 bg-blue-50 rounded-full px-3 py-1 mt-1">{c.multiplierText}</div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
