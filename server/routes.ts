@@ -1,12 +1,7 @@
 import type { Express } from "express";
 import { type Server } from "http";
 import { db } from "./db";
-import {
-  contestants,
-  disciplines,
-  results,
-  coffees,
-} from "@shared/schema";
+import { contestants, disciplines, results, coffees } from "@shared/schema";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -16,11 +11,13 @@ import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
 ): Promise<Server> {
   // Setup Auth
-  await setupAuth(app);
-  registerAuthRoutes(app);
+  const authEnabled = await setupAuth(app);
+  if (authEnabled) {
+    registerAuthRoutes(app);
+  }
 
   // === SEED DATA ===
   await seedDatabase();
@@ -41,7 +38,9 @@ export async function registerRoutes(
 
   // Results
   app.get(api.results.list.path, async (req, res) => {
-    const disciplineId = req.query.disciplineId ? parseInt(req.query.disciplineId as string) : undefined;
+    const disciplineId = req.query.disciplineId
+      ? parseInt(req.query.disciplineId as string)
+      : undefined;
     const results = await storage.getResults(disciplineId);
     res.json(results);
   });
@@ -51,14 +50,17 @@ export async function registerRoutes(
       const input = api.results.create.input.parse(req.body);
 
       // Check for existing result
-      const existing = await storage.getResultByContestantAndDiscipline(input.contestantId, input.disciplineId);
+      const existing = await storage.getResultByContestantAndDiscipline(
+        input.contestantId,
+        input.disciplineId,
+      );
       if (existing) {
         return res.status(409).json({ message: "nuh uh ya cant roll twice" });
       }
 
       // Calculate score logic: roll * skillMultiplier
       const contestants = await storage.getContestants();
-      const contestant = contestants.find(c => c.id === input.contestantId);
+      const contestant = contestants.find((c) => c.id === input.contestantId);
       if (!contestant) {
         return res.status(400).json({ message: "Contestant not found" });
       }
@@ -76,7 +78,7 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         res.status(400).json({
           message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
+          field: err.errors[0].path.join("."),
         });
       } else {
         res.status(500).json({ message: "Internal server error" });
@@ -117,11 +119,10 @@ async function seedDatabase() {
 
   const existingContestants = await storage.getContestants();
   if (existingContestants.length === 0) {
-    
     // Using the new file provided in the latest message
     const seedFiles = [
       "attached_assets/Pasted--iameire-50-people-holy-medicine-hat-empire-wyatt-macle_1770920975692.txt",
-      "attached_assets/Bez_názdvu_1770908384534.txt"
+      "attached_assets/Bez_názdvu_1770908384534.txt",
     ];
 
     let fileToUse = "";
@@ -134,12 +135,18 @@ async function seedDatabase() {
 
     if (fileToUse) {
       try {
-        const content = fs.readFileSync(path.resolve(process.cwd(), fileToUse), "utf-8");
-        const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        
+        const content = fs.readFileSync(
+          path.resolve(process.cwd(), fileToUse),
+          "utf-8",
+        );
+        const lines = content
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0);
+
         let currentCountry = "";
         const seenContestants = new Set();
-        
+
         for (const line of lines) {
           // Skip header lines like "@iameire (50 people)"
           if (line.startsWith("@")) continue;
@@ -149,10 +156,18 @@ async function seedDatabase() {
             const name = personMatch[1];
             const multiplier = parseFloat(personMatch[2]);
             const multiplierText = `x${multiplier}`;
-            
-            if (currentCountry && !seenContestants.has(`${name}-${currentCountry}`)) {
-               await storage.createContestant(name, currentCountry, multiplier, multiplierText);
-               seenContestants.add(`${name}-${currentCountry}`);
+
+            if (
+              currentCountry &&
+              !seenContestants.has(`${name}-${currentCountry}`)
+            ) {
+              await storage.createContestant(
+                name,
+                currentCountry,
+                multiplier,
+                multiplierText,
+              );
+              seenContestants.add(`${name}-${currentCountry}`);
             }
           } else {
             // Assume it's a country
@@ -164,6 +179,6 @@ async function seedDatabase() {
       }
     }
   }
-  
+
   await storage.getCoffeeCount();
 }
