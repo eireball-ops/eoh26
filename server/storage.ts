@@ -1,4 +1,5 @@
 import { getDbOrThrow, isDatabaseConfigured } from "./db";
+import { kv } from "@vercel/kv";
 import {
   disciplines,
   contestants,
@@ -15,6 +16,10 @@ import { eq, desc, and } from "drizzle-orm";
 import { authStorage, type IAuthStorage } from "./replit_integrations/auth";
 import type { User, UpsertUser } from "@shared/models/auth";
 
+const isKvConfigured = Boolean(
+  process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN,
+);
+
 export interface IStorage extends IAuthStorage {
   // Disciplines
   getDisciplines(): Promise<Discipline[]>;
@@ -30,9 +35,7 @@ export interface IStorage extends IAuthStorage {
   ): Promise<Contestant>;
 
   // Results
-  getResults(
-    disciplineId?: number,
-  ): Promise<
+  getResults(disciplineId?: number): Promise<
     (Result & {
       contestantName: string;
       country: string;
@@ -92,9 +95,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Results
-  async getResults(
-    disciplineId?: number,
-  ): Promise<
+  async getResults(disciplineId?: number): Promise<
     (Result & {
       contestantName: string;
       country: string;
@@ -297,6 +298,154 @@ class MemoryStorage implements IStorage {
   }
 }
 
+class KvStorage implements IStorage {
+  private async getArray<T>(key: string): Promise<T[]> {
+    const value = await kv.get<T[]>(key);
+    return Array.isArray(value) ? value : [];
+  }
+
+  private async setArray<T>(key: string, value: T[]): Promise<void> {
+    await kv.set(key, value);
+  }
+
+  private async getNextId(counterKey: string): Promise<number> {
+    const next = await kv.incr(counterKey);
+    return typeof next === "number" ? next : Number(next);
+  }
+
+  async getUser(id: string): Promise<User | undefined> {
+    const users = (await kv.get<Record<string, User>>("users")) ?? {};
+    return users[id];
+  }
+
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const users = (await kv.get<Record<string, User>>("users")) ?? {};
+    const existing = users[userData.id];
+    const user: User = {
+      ...existing,
+      ...userData,
+      createdAt: existing?.createdAt ?? new Date(),
+      updatedAt: new Date(),
+    } as User;
+    users[userData.id] = user;
+    await kv.set("users", users);
+    return user;
+  }
+
+  async getDisciplines(): Promise<Discipline[]> {
+    return await this.getArray<Discipline>("disciplines");
+  }
+
+  async createDiscipline(name: string, icon: string): Promise<Discipline> {
+    const disciplines = await this.getArray<Discipline>("disciplines");
+    const discipline: Discipline = {
+      id: await this.getNextId("discipline:id"),
+      name,
+      icon,
+    };
+    disciplines.push(discipline);
+    await this.setArray("disciplines", disciplines);
+    return discipline;
+  }
+
+  async getContestants(): Promise<Contestant[]> {
+    return await this.getArray<Contestant>("contestants");
+  }
+
+  async createContestant(
+    name: string,
+    country: string,
+    skillMultiplier: number,
+    multiplierText: string,
+  ): Promise<Contestant> {
+    const contestants = await this.getArray<Contestant>("contestants");
+    const contestant: Contestant = {
+      id: await this.getNextId("contestant:id"),
+      name,
+      country,
+      skillMultiplier,
+      multiplierText,
+    };
+    contestants.push(contestant);
+    await this.setArray("contestants", contestants);
+    return contestant;
+  }
+
+  async getResults(disciplineId?: number): Promise<
+    (Result & {
+      contestantName: string;
+      country: string;
+      disciplineId: number;
+      score: number;
+    })[]
+  > {
+    const results = await this.getArray<Result>("results");
+    const contestants = await this.getArray<Contestant>("contestants");
+    const byContestantId = new Map(
+      contestants.map((contestant) => [contestant.id, contestant]),
+    );
+
+    return results
+      .filter((result) =>
+        disciplineId ? result.disciplineId === disciplineId : true,
+      )
+      .map((result) => {
+        const contestant = byContestantId.get(result.contestantId);
+        return {
+          ...result,
+          contestantName: contestant?.name ?? "Unknown",
+          country: contestant?.country ?? "Unknown",
+          disciplineId: result.disciplineId,
+          score: result.score,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+  }
+
+  async getResultByContestantAndDiscipline(
+    contestantId: number,
+    disciplineId: number,
+  ): Promise<Result | undefined> {
+    const results = await this.getArray<Result>("results");
+    return results.find(
+      (result) =>
+        result.contestantId === contestantId &&
+        result.disciplineId === disciplineId,
+    );
+  }
+
+  async createResult(insertResult: InsertResult): Promise<Result> {
+    const results = await this.getArray<Result>("results");
+    const result: Result = {
+      id: await this.getNextId("result:id"),
+      ...insertResult,
+      rolledAt: new Date(),
+    };
+    results.push(result);
+    await this.setArray("results", results);
+    return result;
+  }
+
+  async getCoffeeCount(): Promise<Coffee> {
+    const coffee = await kv.get<Coffee>("coffee");
+    if (coffee) {
+      return coffee;
+    }
+    const initial: Coffee = { id: 1, count: 0 };
+    await kv.set("coffee", initial);
+    return initial;
+  }
+
+  async incrementCoffeeCount(): Promise<Coffee> {
+    const current = await this.getCoffeeCount();
+    const updated = { ...current, count: current.count + 1 };
+    await kv.set("coffee", updated);
+    return updated;
+  }
+}
+
 export const storage = isDatabaseConfigured
   ? new DatabaseStorage()
-  : new MemoryStorage();
+  : isKvConfigured
+    ? new KvStorage()
+    : new MemoryStorage();
