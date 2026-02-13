@@ -96,11 +96,13 @@ import { Card, CardContent } from "@/components/ui/card";
                               <button
                                 className="text-green-700 font-bold px-2"
                                 onClick={() => {
-                                  editDiscipline.mutate({
-                                    id: discipline.id,
-                                    name: editFields.name,
-                                    icon: editFields.icon,
-                                  });
+                                  editDiscipline.mutate(
+                                    discipline.id,
+                                    {
+                                      name: editFields.name,
+                                      icon: editFields.icon,
+                                    }
+                                  );
                                   setEditId(null);
                                 }}
                               >Save</button>
@@ -155,4 +157,4 @@ import { Card, CardContent } from "@/components/ui/card";
       <Footer />
     </div>
   );
-}
+
